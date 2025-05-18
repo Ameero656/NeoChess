@@ -48,13 +48,8 @@ int main() {
 
 
     Game chessGame(p1Type, p2Type);
-    // If AI players were chosen, their depths might need to be set
-    // This requires access to the player objects within Game, or Game constructor takes depths
-    // For now, we can modify AIPlayer's constructor to take default depth or set it after.
-    // Let's refine AIPlayer setup if specific depths were chosen:
 
     // This is a bit of a hack to set depth post-construction.
-    // A better design might involve Game taking PlayerConfig objects.
     if (p1Type == PlayerType::AI) {
         AIPlayer* aiP1 = dynamic_cast<AIPlayer*>(const_cast<Player*>(chessGame.getPlayer(Color::WHITE)));
         if (aiP1) aiP1->setSearchDepth(p1Depth);
@@ -73,7 +68,7 @@ int main() {
     while (chessGame.getGameState() == GameState::PLAYING || chessGame.getGameState() == GameState::CHECK) {
         display.clearScreen();
         const Move* lastMovePtr = nullptr;
-        if (!chessGame.getMoveHistory().empty()){
+        if (!chessGame.getMoveHistory().empty()) {
             lastMovePtr = &chessGame.getMoveHistory().back();
         }
         display.displayBoard(chessGame.getBoard(), lastMovePtr);
