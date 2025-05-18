@@ -60,19 +60,21 @@ int main() {
     }
 
 
-    EvaluationEngine engine;
+    EvaluationEngine engineA;
+    EvaluationEngine engineB(1.0, 0.02, 0.05, 1, 2);
     TextDisplay display;
 
     chessGame.start(); // Initialize game state and board
 
     while (chessGame.getGameState() == GameState::PLAYING || chessGame.getGameState() == GameState::CHECK) {
+        const EvaluationEngine& engineToUse = (chessGame.getCurrentPlayerColor() == Color::WHITE) ? engineA : engineB;
         display.clearScreen();
         const Move* lastMovePtr = nullptr;
         if (!chessGame.getMoveHistory().empty()) {
             lastMovePtr = &chessGame.getMoveHistory().back();
         }
         display.displayBoard(chessGame.getBoard(), lastMovePtr);
-        display.displayGameStatus(chessGame);
+        display.displayGameStatus(chessGame, true, engineToUse);
 
         const Player* currentPlayer = chessGame.getCurrentPlayer();
         if (!currentPlayer) {
@@ -81,8 +83,8 @@ int main() {
         }
 
         std::cout << currentPlayer->getName() << "'s turn." << std::endl;
-
-        Move move = currentPlayer->getMove(chessGame, &engine); // Pass engine for AI
+        
+        Move move = currentPlayer->getMove(chessGame, &engineToUse);
 
         if (!move.from.isValid()) { // Indicates an issue or no move (e.g. AI couldn't find one)
             std::cout << "Player could not make a move. Game might be stuck or ended." << std::endl;
@@ -102,7 +104,7 @@ int main() {
         lastMovePtr = &chessGame.getMoveHistory().back();
     }
     display.displayBoard(chessGame.getBoard(), lastMovePtr);
-    display.displayGameStatus(chessGame);
+    display.displayGameStatus(chessGame, true, engineA);
     std::cout << "Game Over!" << std::endl;
 
     return 0;

@@ -23,12 +23,13 @@ struct EvaluationResult {
 class EvaluationEngine {
 public:
     EvaluationEngine();
+    EvaluationEngine(float materialWeight, float mobilityWeight, float kingSafetyWeight, float pawnStructureWeight, float centerControlWeight);
 
     // Main method to find the best move for the current player in the given game state
     Move findBestMove(const Game& game, int depth) const;
 
     // Static evaluation of the board from a given player's perspective
-    float staticEvaluate(const Board& board, Color perspective) const;
+    float staticEvaluate(const Board& board, Color perspective, const bool report = false) const;
 
 private:
     // Recursive search function (e.g., Minimax with Alpha-Beta Pruning)

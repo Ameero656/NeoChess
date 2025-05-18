@@ -84,14 +84,17 @@ void TextDisplay::displayBoard(const Board& board, const Move* lastMove) const {
     std::cout << std::endl << std::endl;
 }
 
-void TextDisplay::displayGameStatus(const Game& game, const bool use_eval, const EvaluationResult eval) const {
+void TextDisplay::displayGameStatus(const Game& game, const bool static_eval, const EvaluationEngine evalEngine) const {
     std::cout << "---------------------------------" << std::endl;
     std::cout << "Turn: " << game.getFullMoveCounter();
     std::cout << " | Player to move: "
               << (game.getCurrentPlayerColor() == Color::WHITE ? "White" : "Black");
     std::cout << " | Halfmove Clock: " << game.getHalfMoveClock() << std::endl;
-    if (use_eval) 
-        std::cout << " | Evaluation: " << eval.score << ", Best Move: " << eval.bestMove.toString() << std::endl;
+    if (static_eval) {
+        std::cout << " | Static Evaluation: " << std::endl;
+        evalEngine.staticEvaluate(game.getBoard(), Color::WHITE, true);
+    }
+        
 
 
     GameState state = game.getGameState();

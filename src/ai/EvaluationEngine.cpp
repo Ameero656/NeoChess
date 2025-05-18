@@ -9,8 +9,13 @@
 const float INFINITY_SCORE = std::numeric_limits<float>::infinity();
 
 EvaluationEngine::EvaluationEngine()
-    : materialWeight(1.0f), mobilityWeight(0.05f), kingSafetyWeight(0.25f),
+    : materialWeight(1.0f), mobilityWeight(0.02f), kingSafetyWeight(0.05f),
       pawnStructureWeight(1.0f), centerControlWeight(1.0f) {
+}
+
+EvaluationEngine::EvaluationEngine(float materialWeight, float mobilityWeight, float kingSafetyWeight, float pawnStructureWeight, float centerControlWeight)
+    : materialWeight(materialWeight), mobilityWeight(mobilityWeight), kingSafetyWeight(kingSafetyWeight),
+      pawnStructureWeight(pawnStructureWeight), centerControlWeight(centerControlWeight) {
 }
 
 // Basic move ordering: captures first, then checks, then others.
@@ -35,17 +40,22 @@ std::vector<Move> EvaluationEngine::orderMoves(const std::vector<Move>& moves, c
 }
 
 
-float EvaluationEngine::staticEvaluate(const Board& board, Color perspective) const {
-    float score = 0.0f;
-    float whiteMaterial = 0.0f;
-    float blackMaterial = 0.0f;
-    float pawnStructureScore = 0.0f;
-    float centerControlScore = 0.0f;
-    float kingSafetyScore = 0.0f;
-    float mobilityScore = 0.0f;
-    
-    int whiteMobility = 0;
-    int blackMobility = 0;
+float EvaluationEngine::staticEvaluate(const Board& board, Color perspective, const bool report) const {
+    float allyMaterial = 0.0f;
+    float enemyMaterial = 0.0f;
+
+    float allyPawnStructureScore = 0.0f;
+    float enemyPawnStructureScore = 0.0f;
+
+    float allyCenterControlScore = 0.0f;
+    float enemyCenterControlScore = 0.0f;
+
+    float allyKingSafetyScore = 0.0f;
+    float enemyKingSafetyScore = 0.0f;
+
+    float allyMobilityScore = 0.0f;
+    float enemyMobilityScore = 0.0f;
+
 
     for (int r = 0; r < board.getDimensions().rows; ++r) {
         for (int c = 0; c < board.getDimensions().cols; ++c) {
@@ -53,11 +63,11 @@ float EvaluationEngine::staticEvaluate(const Board& board, Color perspective) co
             if (!piece) continue;
 
             if (piece->getColor() == Color::WHITE) {
-                whiteMaterial += piece->getValue();
-                whiteMobility += piece->getPossibleMoves(board).size();
+                allyMaterial += piece->getValue();
+                allyMobilityScore += piece->getPossibleMoves(board).size();
             } else {
-                blackMaterial += piece->getValue();
-                blackMobility += piece->getPossibleMoves(board).size();
+                enemyMaterial += piece->getValue();
+                enemyMobilityScore += piece->getPossibleMoves(board).size();
             }
             
         }
@@ -66,16 +76,21 @@ float EvaluationEngine::staticEvaluate(const Board& board, Color perspective) co
     // score pawn structure
 
     for (int c = 0; c < board.getDimensions().cols; ++c) {
-        int pawnCount = 0;
+        int allyPawnCount = 0;
+        int enemyPawnCount = 0;
 
         for (int r = 0; r < board.getDimensions().rows; ++r) {
             const Piece* piece = board.getPieceAt(Position(r, c));
-            if (!piece) continue;
+            if (!piece || piece->getType() != PieceType::PAWN) continue;
             
-            if (piece->getType() != PieceType::PAWN && piece->getColor() == perspective) pawnCount++;
+            piece->getColor() == perspective ? allyPawnCount++ : enemyPawnCount++;
         }
-        if (pawnCount == 2) pawnStructureScore -=0.1f;
-        else if (pawnCount == 3) pawnStructureScore -= 0.25f;
+
+        if (allyPawnCount == 2) allyPawnStructureScore -=0.1f;
+        else if (allyPawnCount == 3) allyPawnStructureScore -= 0.25f;
+
+        if (enemyPawnCount == 2) enemyPawnStructureScore -=0.1f;
+        else if (enemyPawnCount == 3) enemyPawnStructureScore -= 0.25f;
     }
 
     // score center control
@@ -84,24 +99,59 @@ float EvaluationEngine::staticEvaluate(const Board& board, Color perspective) co
             const Piece* piece = board.getPieceAt(Position(r, c));
             if (!piece) continue;
 
-            if (piece->getColor() == perspective) centerControlScore += 0.25;
+            if (piece->getColor() == perspective) allyCenterControlScore += 0.25;
+            else enemyCenterControlScore += 0.25;
         }
     }
 
     // TODO: score king safety
 
     Position allyKingPos = board.findKing(perspective);
-    Position enemyKingPos = board.findKing(perspective);
-    
+    Position enemyKingPos = board.findKing(perspective == Color::WHITE ? Color::BLACK : Color::WHITE);
 
-    score += materialWeight * (whiteMaterial - blackMaterial);
-    score += pawnStructureWeight * pawnStructureScore;
-    score += centerControlWeight * centerControlScore;
-    score += kingSafetyWeight * kingSafetyScore;
-    score += mobilityWeight * (whiteMobility - blackMobility);
+    if (perspective == Color::WHITE) {
+        for (int r = allyKingPos.row; r >= 0; --r) {
+            const Piece* allyFilePiece = board.getPieceAt(Position(r, allyKingPos.col));
+            if (allyFilePiece) allyKingSafetyScore += (allyFilePiece->getColor() == perspective ? 1 : 0);
+        }
+        for (int r = enemyKingPos.row; r < board.getDimensions().rows; ++r) {
+            const Piece* enemyFilePiece = board.getPieceAt(Position(r, enemyKingPos.col));
+            if (enemyFilePiece) enemyKingSafetyScore += (enemyFilePiece->getColor() != perspective ? 1 : 0);
+        }
+    } else {
+        for (int r = enemyKingPos.row; r >= 0; --r) {
+            const Piece* enemyFilePiece = board.getPieceAt(Position(r, allyKingPos.col));
+            if (enemyFilePiece) allyKingSafetyScore += (enemyFilePiece->getColor() != perspective ? 1 : 0);
+        }
+        for (int r = allyKingPos.row; r < board.getDimensions().rows; ++r) {
+            const Piece* allyFilePiece = board.getPieceAt(Position(r, allyKingPos.col));
+            if (allyFilePiece) enemyKingSafetyScore += (allyFilePiece->getColor() == perspective ? 1 : 0);
+        }
+    }
+
+    
+    
+    float materialScore = materialWeight * (allyMaterial - enemyMaterial);
+    float pawnStructureScore = pawnStructureWeight * (allyPawnStructureScore - enemyPawnStructureScore);
+    float centerControlScore = centerControlWeight * (allyCenterControlScore - enemyCenterControlScore); 
+    float kingSafetyScore = kingSafetyWeight * (allyKingSafetyScore - enemyKingSafetyScore);
+    float mobilityScore = mobilityWeight * (allyMobilityScore - enemyMobilityScore);
+
+    float score = materialScore + pawnStructureScore + centerControlScore + kingSafetyScore + mobilityScore;
+
+    if (report) {
+        auto round3 = [](float val) { return std::round(val * 1000.0f) / 1000.0f; };
+        std::cout << "Static evaluation score: " << round3(score) << std::endl;
+        std::cout << "  Material: " << round3(materialScore) << " | (WGT=" << materialWeight << ")" << std::endl;
+        std::cout << "  Pawn structure: " << round3(pawnStructureScore) << " | (WGT=" << pawnStructureWeight << ")" << std::endl;
+        std::cout << "  Center control: " << round3(centerControlScore) << " | (WGT=" << centerControlWeight << ")" << std::endl;
+        std::cout << "  King safety: " << round3(kingSafetyScore) << " | (WGT=" << kingSafetyWeight << ")" << std::endl;
+        std::cout << "  Mobility: " << round3(mobilityScore) << " | (WGT=" << mobilityWeight << ")" << std::endl;
+    }
     
     // Adjust score based on perspective
     return (perspective == Color::WHITE) ? score : -score;
+;
 }
 
 

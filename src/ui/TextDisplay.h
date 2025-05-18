@@ -21,7 +21,7 @@ public:
     void displayBoard(const Board& board, const Move* lastMove = nullptr) const;
 
     // Displays game status messages (e.g., Check, Checkmate, Player to move)
-    void displayGameStatus(const Game& game, const bool use_eval = false, const EvaluationResult eval = {}) const;
+    void displayGameStatus(const Game& game, const bool static_eval = false, const EvaluationEngine evalEngine = {}) const;
 
     // Displays evaluation information
     void displayEvaluation(float score, const Move& bestMove) const;
