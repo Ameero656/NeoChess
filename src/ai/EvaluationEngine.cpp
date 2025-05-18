@@ -1,0 +1,234 @@
+#include "ai/EvaluationEngine.h"
+#include "core/Game.h"   // For Game and Board context
+#include "core/Board.h"
+#include "core/Piece.h"
+#include <limits>     // For std::numeric_limits
+#include <algorithm>  // For std::sort, std::max, std::min
+#include <iostream>   // For debugging output
+
+const float INFINITY_SCORE = std::numeric_limits<float>::infinity();
+
+EvaluationEngine::EvaluationEngine()
+    : materialWeight(1.0f), mobilityWeight(0.05f), kingSafetyWeight(0.25f),
+      pawnStructureWeight(1.0f), centerControlWeight(1.0f) {
+}
+
+// Basic move ordering: captures first, then checks, then others.
+// A more sophisticated version would use MVV-LVA (Most Valuable Victim - Least Valuable Aggressor)
+// or history heuristics.
+std::vector<Move> EvaluationEngine::orderMoves(const std::vector<Move>& moves, const Board& board) const {
+    std::vector<Move> ordered = moves;
+    std::sort(ordered.begin(), ordered.end(), [&](const Move& a, const Move& b) {
+        bool aIsCapture = (board.getPieceAt(a.to) != nullptr);
+        bool bIsCapture = (board.getPieceAt(b.to) != nullptr);
+        // Placeholder: A real check detection is needed here
+        // bool aIsCheck = false; // game.isCheckAfterMove(a);
+        // bool bIsCheck = false; // game.isCheckAfterMove(b);
+
+        if (aIsCapture && !bIsCapture) return true;
+        if (!aIsCapture && bIsCapture) return false;
+        
+        // Further ordering (e.g., checks, promotions) can be added here.
+        return false; // Default: no change in order
+    });
+    return ordered;
+}
+
+
+float EvaluationEngine::staticEvaluate(const Board& board, Color perspective) const {
+    float score = 0.0f;
+    float whiteMaterial = 0.0f;
+    float blackMaterial = 0.0f;
+    float pawnStructureScore = 0.0f;
+    float centerControlScore = 0.0f;
+    float kingSafetyScore = 0.0f;
+    float mobilityScore = 0.0f;
+    
+    int whiteMobility = 0;
+    int blackMobility = 0;
+
+    for (int r = 0; r < board.getDimensions().rows; ++r) {
+        for (int c = 0; c < board.getDimensions().cols; ++c) {
+            const Piece* piece = board.getPieceAt(Position(r, c));
+            if (!piece) continue;
+
+            if (piece->getColor() == Color::WHITE) {
+                whiteMaterial += piece->getValue();
+                whiteMobility += piece->getPossibleMoves(board).size();
+            } else {
+                blackMaterial += piece->getValue();
+                blackMobility += piece->getPossibleMoves(board).size();
+            }
+            
+        }
+    }
+
+    // score pawn structure
+
+    for (int c = 0; c < board.getDimensions().cols; ++c) {
+        int pawnCount = 0;
+
+        for (int r = 0; r < board.getDimensions().rows; ++r) {
+            const Piece* piece = board.getPieceAt(Position(r, c));
+            if (!piece) continue;
+            
+            if (piece->getType() != PieceType::PAWN && piece->getColor() == perspective) pawnCount++;
+        }
+        if (pawnCount == 2) pawnStructureScore -=0.1f;
+        else if (pawnCount == 3) pawnStructureScore -= 0.25f;
+    }
+
+    // score center control
+    for (int r = 3; r < 5; ++r) {
+        for (int c = 2; c < 5; ++c) {
+            const Piece* piece = board.getPieceAt(Position(r, c));
+            if (!piece) continue;
+
+            if (piece->getColor() == perspective) centerControlScore += 0.25;
+        }
+    }
+
+    // TODO: score king safety
+
+    Position allyKingPos = board.findKing(perspective);
+    Position enemyKingPos = board.findKing(perspective);
+    
+
+    score += materialWeight * (whiteMaterial - blackMaterial);
+    score += pawnStructureWeight * pawnStructureScore;
+    score += centerControlWeight * centerControlScore;
+    score += kingSafetyWeight * kingSafetyScore;
+    score += mobilityWeight * (whiteMobility - blackMobility);
+    
+    // Adjust score based on perspective
+    return (perspective == Color::WHITE) ? score : -score;
+}
+
+
+EvaluationResult EvaluationEngine::search(Game game, int depth, float alpha, float beta, bool isMaximizingTurn, Color originalPlayerColor) const {
+    EvaluationResult currentEval;
+    currentEval.nodesSearched = 1;
+
+
+    std::vector<Move> legalMoves = game.getLegalMoves(); // Get moves for current player in 'game'
+
+    // Base cases for recursion
+    if (depth == 0) {
+        currentEval.score = staticEvaluate(game.getBoard(), originalPlayerColor);
+        // No bestMove at leaf node of this type
+        return currentEval;
+    }
+
+    
+    if (legalMoves.empty()) {
+        if (game.isKingInCheck(game.getCurrentPlayerColor())) { // Checkmate
+            currentEval.score = isMaximizingTurn ? -INFINITY_SCORE : INFINITY_SCORE; // Current player (whose turn it is) is checkmated
+        } else { // Stalemate
+            currentEval.score = 0.0f;
+        }
+        return currentEval;
+    }
+
+    
+    
+    // Order moves for better alpha-beta pruning
+    legalMoves = orderMoves(legalMoves, game.getBoard());
+
+    if (isMaximizingTurn) { // Corresponds to originalPlayerColor's turn
+        float maxEval = -INFINITY_SCORE;
+        Move bestMoveSoFar = legalMoves.empty() ? Move(Position(-1,-1), Position(-1,-1)) : legalMoves[0];
+
+        for (const auto& move : legalMoves) {
+            Game nextGameState = game.clone(); // Create a copy to simulate the move
+            nextGameState.makeMove(move);   // makeMove switches player and updates game state
+
+            EvaluationResult result = search(std::move(nextGameState), depth - 1, alpha, beta, false, originalPlayerColor);
+            currentEval.nodesSearched += result.nodesSearched;
+
+            if (result.score > maxEval) {
+                maxEval = result.score;
+                bestMoveSoFar = move;
+            }
+            alpha = std::max(alpha, result.score);
+            if (beta <= alpha) {
+                break; // Beta cut-off
+            }
+        }
+        currentEval.score = maxEval;
+        currentEval.bestMove = bestMoveSoFar;
+    } else { // Minimizing player's turn (opponent of originalPlayerColor)
+        float minEval = INFINITY_SCORE;
+        Move bestMoveSoFar = legalMoves.empty() ? Move(Position(-1,-1), Position(-1,-1)) : legalMoves[0];
+
+        currentEval.score -= legalMoves.size() * mobilityWeight;
+
+        for (const auto& move : legalMoves) {
+            Game nextGameState = game.clone(); // Create a copy
+            nextGameState.makeMove(move);
+
+            EvaluationResult result = search(std::move(nextGameState), depth - 1, alpha, beta, true, originalPlayerColor);
+            currentEval.nodesSearched += result.nodesSearched;
+
+            if (result.score < minEval) {
+                minEval = result.score;
+                bestMoveSoFar = move; // This move is from opponent's perspective, not usually returned for original player
+            }
+            beta = std::min(beta, result.score);
+            if (beta <= alpha) {
+                break; // Alpha cut-off
+            }
+        }
+        currentEval.score = minEval;
+        // For minimizing player, we don't typically care about *their* best move,
+        // only the score they'd achieve. The bestMove is for the maximizing player.
+        // currentEval.bestMove = bestMoveSoFar; // Or keep it as is from initialization
+    }
+    return currentEval;
+}
+
+
+Move EvaluationEngine::findBestMove(const Game& game, int depth) const {
+    if (depth <= 0) depth = 1; // Ensure at least depth 1
+
+    // The 'game' state here is the current actual game state.
+    // The 'search' function will work on copies.
+    // Determine if the current player in 'game' is the one we are maximizing for.
+    // The score in staticEvaluate is from White's perspective.
+    // So, if current player is White, it's a maximizing turn. If Black, it's a minimizing turn
+    // in terms of that raw score.
+    // Let's define maximizingPlayer based on whose turn it is in the *initial* call.
+    // The 'search' function's 'maximizingPlayer' bool will alternate.
+    // 'originalPlayerColor' in search helps interpret the score from a consistent view.
+
+    Color playerToMove = game.getCurrentPlayerColor();
+    
+    std::cout << "Engine searching for best move for " << (playerToMove == Color::WHITE ? "White" : "Black") << " at depth " << depth << std::endl;
+    
+    // Initial call to search:
+    // - 'game' is the current game state.
+    // - 'depth' is the requested search depth.
+    // - alpha, beta initialized.
+    // - 'isMaximizingTurn' is true if playerToMove == originalPlayerColor (which is playerToMove here)
+    // - 'originalPlayerColor' is playerToMove.
+    // The search function needs to know whose perspective "maximizing" refers to.
+    // Let's make the score relative to the player whose turn it is initially.
+    // So, staticEvaluate should return score relative to current player,
+    // or search needs to flip score if originalPlayerColor is BLACK.
+    // For simplicity, let's assume staticEvaluate returns score relative to WHITE.
+    // The 'search' function will then know if it's maximizing this (if White is originalPlayerColor)
+    // or minimizing this (if Black is originalPlayerColor).
+
+    EvaluationResult result = search(game.clone(), depth, -INFINITY_SCORE, INFINITY_SCORE, true, playerToMove);
+
+    std::cout << "Nodes searched: " << result.nodesSearched << std::endl;
+    std::cout << "Best move found: " << result.bestMove.toString() << " with score: " << result.score << std::endl;
+    
+    // If no moves are possible (checkmate/stalemate), result.bestMove might be invalid.
+    // Game loop should handle this (e.g., by game state).
+    if (game.getLegalMoves().empty()) {
+        std::cout << "No legal moves available, returning invalid move from engine." << std::endl;
+        return Move(Position(-1,-1), Position(-1,-1));
+    }
+    
+    return result.bestMove;
+}

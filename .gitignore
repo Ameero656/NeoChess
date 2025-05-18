@@ -1,0 +1,16 @@
+# Ignore build directory
+build/
+
+# Ignore compiled executables (if they are placed in a specific location, adjust as needed)
+ChessGame
+ChessGame.exe
+
+# Ignore other common build artifacts or OS-specific files (optional)
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+.DS_Store
+Thumbs.db
