@@ -57,6 +57,7 @@ public:
     // Returns the captured piece, if any.
     // Game logic is responsible for validating the move first.
     std::unique_ptr<Piece> performMove(const Move& move);
+    std::unique_ptr<Piece> performUnmove(const Move& move);
 
     BoardDimensions getDimensions() const;
 

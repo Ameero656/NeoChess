@@ -8,9 +8,9 @@ ChessGame.exe
 # Ignore other common build artifacts or OS-specific files (optional)
 *.o
 *.obj
-*.exe
 *.dll
 *.so
 *.dylib
+*.txt
 .DS_Store
 Thumbs.db

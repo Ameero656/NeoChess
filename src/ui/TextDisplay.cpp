@@ -94,6 +94,8 @@ void TextDisplay::displayGameStatus(const Game& game, const bool static_eval, co
         std::cout << " | Static Evaluation: " << std::endl;
         evalEngine.staticEvaluate(game.getBoard(), Color::WHITE, true);
     }
+
+    std::cout << "Game State Hash:" << game.getGameStateHash() << "->" << game.getGameStateCount() << std::endl;
         
 
 

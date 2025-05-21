@@ -24,6 +24,8 @@ Game::Game(PlayerType p1Type, PlayerType p2Type, int boardRows, int boardCols)
     } else {
         player2 = std::make_unique<AIPlayer>(Color::BLACK);
     }
+
+    recordGameState();
 }
 
 Game::~Game() {
@@ -205,8 +207,22 @@ bool Game::makeMove(const Move& proposedMove) {
 
     switchPlayer();
     updateGameState(); // Check for check/checkmate/stalemate/draw after the move
+    recordGameState();
+    if (getGameStateCount() >= 3) gameState = GameState::DRAW_THREEFOLD_REPETITION;
 
+ 
     return true;
+}
+
+bool Game::unmakeMove(const Move& proposedMove) {
+    Position source = proposedMove.to;
+    Position destination = proposedMove.from;
+    const Piece* pieceToMove = board.getPieceAt(source);
+    board.performUnmove(proposedMove);
+    //TODO: Impliment
+
+    return false;
+    
 }
 
 // Getters
@@ -336,4 +352,37 @@ Game& Game::operator=(Game&& other) noexcept {
         other.board.setLastMove(nullptr);
     }
     return *this;
+}
+
+uint64_t Game::getGameStateHash() const {
+    return gameStateHash;
+}
+
+int Game::getGameStateCount() const {
+    auto it = gameStateRecord.find(gameStateHash);
+    if (it != gameStateRecord.end()) {
+        return it->second;
+    }
+    return 0;
+}
+
+void Game::recordGameState() {
+    hashGameState();
+    
+    gameStateRecord[gameStateHash]++; 
+}
+
+void Game::hashGameState() {
+
+    gameStateHash = 0;
+
+    for (int r=0; r < board.getDimensions().rows; ++r) {
+        for (int c=0; c < board.getDimensions().cols; ++c) {
+            const Piece* piece = board.getPieceAt(Position(r, c));
+            if (!piece) continue;
+            int val = (static_cast<int>(piece->getType()) + static_cast<int>(piece->getColor()) + r + c);
+
+            gameStateHash ^= val * (currentPlayerColor == Color::WHITE ? 0x9e3779b97f4a7c15 : 0xfedcba9876543210);
+        }
+    }
 }

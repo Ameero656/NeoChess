@@ -61,7 +61,7 @@ int main() {
 
 
     EvaluationEngine engineA;
-    EvaluationEngine engineB(1.0, 0.02, 0.05, 1, 2);
+    EvaluationEngine engineB;
     TextDisplay display;
 
     chessGame.start(); // Initialize game state and board

@@ -8,8 +8,9 @@
 #include <vector>
 #include <memory> // For std::unique_ptr
 #include <string> // For FEN, move history in string format
+#include <unordered_map>
 
-// Forward declare Player to avoid full include here if Player.h includes Game.h (circular)
+
 class Player;
 class EvaluationEngine; // For AI to access evaluation (or Game provides an eval interface)
 
@@ -23,16 +24,16 @@ private:
     std::vector<Move> moveHistory; // Stores all moves made
     int halfMoveClock; // For 50-move rule
     int fullMoveCounter; // Increments after Black moves
+    std::unordered_map<uint64_t, int> gameStateRecord;
+    uint64_t gameStateHash;
 
-    // For threefold repetition detection (more complex, placeholder for now)
-    // std::vector<std::string> positionHistoryFEN; // Store FEN strings of positions
+
 
     void switchPlayer();
     void updateGameState(); // Checks for check, checkmate, stalemate, draw conditions
     bool hasLegalMoves(Color playerColor); // Checks if the player has any legal moves
 
     // Generates all pseudo-legal moves for a player (moves that are valid on the board
-    // but don't yet account for leaving the king in check)
     std::vector<Move> generatePseudoLegalMoves(Color playerColor) const;
 
 public:
@@ -41,6 +42,7 @@ public:
 
     void start(); // Main game loop will be initiated from here or externally
     bool makeMove(const Move& move); // Attempts to make a move, returns true if successful
+    bool unmakeMove(const Move& move);
 
     // Getters
     const Board& getBoard() const;
@@ -59,14 +61,7 @@ public:
 
 
     // For AI and deep copying/simulation
-    Game clone() const; // Creates a deep copy of the game state
-                       // This is complex due to Player ownership if they hold state.
-                       // A simpler clone might only copy board and essential game vars,
-                       // and be used by an AI that doesn't need full Player objects.
-
-    // For setting up custom positions (e.g., from FEN) - Future
-    // void loadFEN(const std::string& fenString);
-    // std::string toFEN() const;
+    Game clone() const;
 
     // To allow AI player to suggest a move
     Move requestAIMove(const EvaluationEngine& engine, int depth);
@@ -77,6 +72,11 @@ public:
 
     // It's also good practice to define a move assignment operator if you have a move constructor
     Game& operator=(Game&& other) noexcept;
+
+    uint64_t getGameStateHash() const;
+    int Game::getGameStateCount() const;
+    void recordGameState();
+    void hashGameState();
 };
 
 #endif // GAME_H

@@ -20,7 +20,7 @@ std::string Position::toAlgebraic() const {
         return "??";
     }
     char file = 'a' + col;
-    char rank = '1' + (7 - row); // Assuming typical 8x8 board, row 0 is rank '8'
+    char rank = '1' + (7 - row);
     return std::string() + file + rank;
 }
 
@@ -36,6 +36,6 @@ Position Position::fromAlgebraic(const std::string& algNot) {
     }
 
     int c = file - 'a';
-    int r = 7 - (rank - '1'); // Assuming typical 8x8 board, rank '1' is row 7
+    int r = 7 - (rank - '1'); 
     return Position(r, c);
 }

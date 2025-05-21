@@ -274,6 +274,10 @@ std::unique_ptr<Piece> Board::performMove(const Move& move) {
     return capturedPiece;
 }
 
+std::unique_ptr<Piece> Board::performUnmove(const Move& move) {
+    return NULL;
+}
+
 
 BoardDimensions Board::getDimensions() const {
     return dimensions;

@@ -5,12 +5,13 @@
 #include <limits>     // For std::numeric_limits
 #include <algorithm>  // For std::sort, std::max, std::min
 #include <iostream>   // For debugging output
+#include <cmath>
 
 const float INFINITY_SCORE = std::numeric_limits<float>::infinity();
 
 EvaluationEngine::EvaluationEngine()
     : materialWeight(1.0f), mobilityWeight(0.02f), kingSafetyWeight(0.05f),
-      pawnStructureWeight(1.0f), centerControlWeight(1.0f) {
+      pawnStructureWeight(1.0f), centerControlWeight(0.5f) {
 }
 
 EvaluationEngine::EvaluationEngine(float materialWeight, float mobilityWeight, float kingSafetyWeight, float pawnStructureWeight, float centerControlWeight)
@@ -56,34 +57,76 @@ float EvaluationEngine::staticEvaluate(const Board& board, Color perspective, co
     float allyMobilityScore = 0.0f;
     float enemyMobilityScore = 0.0f;
 
+    BoardDimensions dimensions = board.getDimensions();
 
-    for (int r = 0; r < board.getDimensions().rows; ++r) {
-        for (int c = 0; c < board.getDimensions().cols; ++c) {
+    std::vector<std::vector<float>> centerControlMap = {
+        {0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f},
+        {0.8f, 1.0f, 1.2f, 1.4f, 1.4f, 1.2f, 1.0f, 0.8f},
+        {0.8f, 1.2f, 1.4f, 1.6f, 1.6f, 1.4f, 1.2f, 0.8f},
+        {0.8f, 1.2f, 1.4f, 1.8f, 1.8f, 1.4f, 1.2f, 0.8f},
+        {0.8f, 1.2f, 1.4f, 1.8f, 1.8f, 1.4f, 1.2f, 0.8f},
+        {0.8f, 1.2f, 1.4f, 1.6f, 1.6f, 1.4f, 1.2f, 0.8f},
+        {0.8f, 1.0f, 1.2f, 1.4f, 1.4f, 1.2f, 1.0f, 0.8f},
+        {0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f}
+    };
+
+
+    for (int r = 0; r < dimensions.rows; ++r) {
+        for (int c = 0; c < dimensions.cols; ++c) {
             const Piece* piece = board.getPieceAt(Position(r, c));
             if (!piece) continue;
+            int moveCount = static_cast<int>(piece->getPossibleMoves(board).size());
 
-            if (piece->getColor() == Color::WHITE) {
+            float centerScore = centerControlMap[r][c];
+            if (piece->getColor() == perspective) {
                 allyMaterial += piece->getValue();
-                allyMobilityScore += piece->getPossibleMoves(board).size();
+                allyMobilityScore += moveCount;
+                allyCenterControlScore += centerScore; 
+                
             } else {
                 enemyMaterial += piece->getValue();
-                enemyMobilityScore += piece->getPossibleMoves(board).size();
+                enemyMobilityScore += moveCount;
+                enemyCenterControlScore += centerScore;
             }
             
         }
     }
 
-    // score pawn structure
+    // score double pawns for pawn structure
 
-    for (int c = 0; c < board.getDimensions().cols; ++c) {
+    for (int c = 0; c < dimensions.cols; ++c) {
         int allyPawnCount = 0;
         int enemyPawnCount = 0;
 
-        for (int r = 0; r < board.getDimensions().rows; ++r) {
+        for (int r = 0; r < dimensions.rows; ++r) {
             const Piece* piece = board.getPieceAt(Position(r, c));
             if (!piece || piece->getType() != PieceType::PAWN) continue;
             
-            piece->getColor() == perspective ? allyPawnCount++ : enemyPawnCount++;
+            Position bottomLeft(-1, c - 1);
+            Position bottomRight(-1, c + 1);
+
+            if (perspective == Color::WHITE) {
+                bottomRight.row = r + 1;
+                bottomLeft.row = r + 1;
+            }
+            else  {
+                bottomRight.row = r - 1;
+                bottomLeft.row = r - 1;
+            }
+
+            const Piece* bottomLeftPiece = board.getPieceAt(bottomRight);
+            const Piece* bottomRightPiece = board.getPieceAt(bottomLeft);
+
+            if (piece->getColor() == perspective) {
+                allyPawnCount++;
+                bottomLeftPiece && bottomLeftPiece->getType() == PieceType::PAWN ? allyPawnStructureScore += 0.05f : allyPawnStructureScore -=0.025f;
+                bottomRightPiece && bottomRightPiece->getType() == PieceType::PAWN ? allyPawnStructureScore += 0.05f : allyPawnStructureScore -=0.025f;
+            }
+            else {
+                enemyPawnCount++;
+                bottomLeftPiece && bottomLeftPiece->getType() == PieceType::PAWN ? enemyPawnStructureScore += 0.05f : enemyPawnStructureScore -= 0.025f;
+                bottomRightPiece && bottomRightPiece->getType() == PieceType::PAWN ? enemyPawnStructureScore += 0.05f : enemyPawnStructureScore -= 0.025f;
+            }            
         }
 
         if (allyPawnCount == 2) allyPawnStructureScore -=0.1f;
@@ -93,18 +136,9 @@ float EvaluationEngine::staticEvaluate(const Board& board, Color perspective, co
         else if (enemyPawnCount == 3) enemyPawnStructureScore -= 0.25f;
     }
 
-    // score center control
-    for (int r = 3; r < 5; ++r) {
-        for (int c = 2; c < 5; ++c) {
-            const Piece* piece = board.getPieceAt(Position(r, c));
-            if (!piece) continue;
+    // score isolated pawns
 
-            if (piece->getColor() == perspective) allyCenterControlScore += 0.25;
-            else enemyCenterControlScore += 0.25;
-        }
-    }
 
-    // TODO: score king safety
 
     Position allyKingPos = board.findKing(perspective);
     Position enemyKingPos = board.findKing(perspective == Color::WHITE ? Color::BLACK : Color::WHITE);
@@ -114,7 +148,7 @@ float EvaluationEngine::staticEvaluate(const Board& board, Color perspective, co
             const Piece* allyFilePiece = board.getPieceAt(Position(r, allyKingPos.col));
             if (allyFilePiece) allyKingSafetyScore += (allyFilePiece->getColor() == perspective ? 1 : 0);
         }
-        for (int r = enemyKingPos.row; r < board.getDimensions().rows; ++r) {
+        for (int r = enemyKingPos.row; r < dimensions.rows; ++r) {
             const Piece* enemyFilePiece = board.getPieceAt(Position(r, enemyKingPos.col));
             if (enemyFilePiece) enemyKingSafetyScore += (enemyFilePiece->getColor() != perspective ? 1 : 0);
         }
@@ -123,7 +157,7 @@ float EvaluationEngine::staticEvaluate(const Board& board, Color perspective, co
             const Piece* enemyFilePiece = board.getPieceAt(Position(r, allyKingPos.col));
             if (enemyFilePiece) allyKingSafetyScore += (enemyFilePiece->getColor() != perspective ? 1 : 0);
         }
-        for (int r = allyKingPos.row; r < board.getDimensions().rows; ++r) {
+        for (int r = allyKingPos.row; r < dimensions.rows; ++r) {
             const Piece* allyFilePiece = board.getPieceAt(Position(r, allyKingPos.col));
             if (allyFilePiece) enemyKingSafetyScore += (allyFilePiece->getColor() == perspective ? 1 : 0);
         }
@@ -161,6 +195,11 @@ EvaluationResult EvaluationEngine::search(Game game, int depth, float alpha, flo
 
 
     std::vector<Move> legalMoves = game.getLegalMoves(); // Get moves for current player in 'game'
+
+    if (game.getHalfMoveClock() == 100 || game.getGameStateCount() >= 3) {
+        currentEval.score = 0;
+        return currentEval;
+    }
 
     // Base cases for recursion
     if (depth == 0) {
@@ -208,9 +247,8 @@ EvaluationResult EvaluationEngine::search(Game game, int depth, float alpha, flo
         currentEval.bestMove = bestMoveSoFar;
     } else { // Minimizing player's turn (opponent of originalPlayerColor)
         float minEval = INFINITY_SCORE;
-        Move bestMoveSoFar = legalMoves.empty() ? Move(Position(-1,-1), Position(-1,-1)) : legalMoves[0];
+        Move bestMoveSoFar = legalMoves.empty() ? Move(Position(-2,-2), Position(-1,-1)) : legalMoves[0];
 
-        currentEval.score -= legalMoves.size() * mobilityWeight;
 
         for (const auto& move : legalMoves) {
             Game nextGameState = game.clone(); // Create a copy
@@ -223,15 +261,14 @@ EvaluationResult EvaluationEngine::search(Game game, int depth, float alpha, flo
                 minEval = result.score;
                 bestMoveSoFar = move; // This move is from opponent's perspective, not usually returned for original player
             }
+            
             beta = std::min(beta, result.score);
             if (beta <= alpha) {
                 break; // Alpha cut-off
             }
         }
         currentEval.score = minEval;
-        // For minimizing player, we don't typically care about *their* best move,
-        // only the score they'd achieve. The bestMove is for the maximizing player.
-        // currentEval.bestMove = bestMoveSoFar; // Or keep it as is from initialization
+        currentEval.bestMove = bestMoveSoFar;
     }
     return currentEval;
 }
@@ -251,8 +288,9 @@ Move EvaluationEngine::findBestMove(const Game& game, int depth) const {
     // 'originalPlayerColor' in search helps interpret the score from a consistent view.
 
     Color playerToMove = game.getCurrentPlayerColor();
-    
-    std::cout << "Engine searching for best move for " << (playerToMove == Color::WHITE ? "White" : "Black") << " at depth " << depth << std::endl;
+    bool isWhiteToMove = (playerToMove == Color::WHITE);
+
+    std::cout << "Engine searching for best move for " << (isWhiteToMove ? "White" : "Black") << " at depth " << depth << std::endl;
     
     // Initial call to search:
     // - 'game' is the current game state.
@@ -268,7 +306,7 @@ Move EvaluationEngine::findBestMove(const Game& game, int depth) const {
     // The 'search' function will then know if it's maximizing this (if White is originalPlayerColor)
     // or minimizing this (if Black is originalPlayerColor).
 
-    EvaluationResult result = search(game.clone(), depth, -INFINITY_SCORE, INFINITY_SCORE, true, playerToMove);
+    EvaluationResult result = search(game.clone(), depth, -INFINITY_SCORE, INFINITY_SCORE, isWhiteToMove, playerToMove);
 
     std::cout << "Nodes searched: " << result.nodesSearched << std::endl;
     std::cout << "Best move found: " << result.bestMove.toString() << " with score: " << result.score << std::endl;
